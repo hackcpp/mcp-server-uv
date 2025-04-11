@@ -1,20 +1,14 @@
 import logging
 from pathlib import Path
-from typing import Sequence
 from mcp.server import Server
-from mcp.server.session import ServerSession
 from mcp.server.stdio import stdio_server
 from mcp.types import (
-    ClientCapabilities,
     TextContent,
     Tool,
-    ListRootsResult,
-    RootsCapability,
 )
 from enum import Enum
 from pydantic import BaseModel
 import subprocess
-import json
 from typing import List, Optional
 import os
 
@@ -206,15 +200,13 @@ def uv_publish(project_path: str, repository: Optional[str] = None) -> str:
         cmd.extend(["--repository", repository])
     return run_uv_command(cmd, project_path)
 
-class UVServer(Server):
-    def __init__(self):
-        super().__init__("mcp-uv")
-        
-    async def initialize(self):
-        """Initialize the server. This is called by the test fixture."""
-        pass
+async def serve() -> None:
+    logger = logging.getLogger(__name__)
 
-    async def list_tools(self):  # Make this async to match the test expectations
+    server = Server("mcp-git")
+
+    @server.list_tools()
+    async def list_tools() -> list[Tool]:
         return [
             Tool(
                 name=UVTools.PIP_LIST,
@@ -292,10 +284,10 @@ class UVServer(Server):
                 inputSchema=UVPublish.model_json_schema(),
             ),
         ]
-
-    async def call_tool(self, name: str, args: dict) -> list[TextContent]:  # Make this match the test signature
+    
+    @server.call_tool()
+    async def call_tool(name: str, args: dict) -> list[TextContent]:
         project_path = Path(args["project_path"])
-        
         match name:
             case UVTools.PIP_LIST:
                 result = uv_pip_list(str(project_path))
@@ -434,9 +426,9 @@ class UVServer(Server):
             case _:
                 raise ValueError(f"Unknown tool: {name}")
 
-async def serve() -> None:
-    logger = logging.getLogger(__name__)
-    server = UVServer()
     options = server.create_initialization_options()
     async with stdio_server() as (read_stream, write_stream):
         await server.run(read_stream, write_stream, options, raise_exceptions=True)
+
+ 
+    
